@@ -1,5 +1,5 @@
-# atm-api rest
+# ATM API REST
 Integração Web Service 2.0 - REST
 
-#how to
+# How To
 Verificar pasta examples com um exemplo prático
