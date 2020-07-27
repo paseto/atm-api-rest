@@ -97,10 +97,10 @@ class ATMAverbaRest extends BaseATMRest implements ATMAverbaRestInterface
     }
 
     /**
-     * @param mixed $xml
+     * @param string $xml File path
      * @return ATMAverbaRest
      */
-    public function setXml($xml)
+    public function setXml(string $xml)
     {
         $this->xml = $xml;
         return $this;
