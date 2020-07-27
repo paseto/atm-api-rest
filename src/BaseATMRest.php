@@ -5,8 +5,8 @@ namespace Paseto;
 
 use DOMDocument;
 
-const URI = 'http://homologaws.averba.com.br/rest/';
-//const URI = 'http://webserver.averba.com.br/rest/';
+//const URI = 'http://homologaws.averba.com.br/rest/';
+const URI = 'http://webserver.averba.com.br/rest/';
 
 abstract class BaseATMRest
 {
