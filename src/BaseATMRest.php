@@ -3,8 +3,6 @@ declare(strict_types=1);
 
 namespace Paseto;
 
-use DOMDocument;
-
 //const URI = 'http://homologaws.averba.com.br/rest/';
 const URI = 'http://webserver.averba.com.br/rest/';
 
