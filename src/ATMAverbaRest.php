@@ -201,7 +201,7 @@ class ATMAverbaRest extends BaseATMRest implements ATMAverbaRestInterface
                 $this->setResultStatusMessage($error->Erros->Erro[0]->Descricao);
             }
             return false;
-        } catch (GuzzleException $guzzleException){
+        } catch (GuzzleException $guzzleException) {
             $this->setErrors('Erro ao executar aplicação. '.$guzzleException->getMessage());
             return false;
         }
@@ -236,5 +236,4 @@ class ATMAverbaRest extends BaseATMRest implements ATMAverbaRestInterface
             return false;
         }
     }
-
 }

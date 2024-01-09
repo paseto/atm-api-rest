@@ -2,3 +2,4 @@
 vendor/
 examples/*.xml
 examples/debug.php
+composer.lock

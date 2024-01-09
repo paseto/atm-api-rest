@@ -145,7 +145,7 @@ abstract class BaseATMRest
     /**
      * @return string
      */
-    public function getMethod():string 
+    public function getMethod():string
     {
         return $this->method;
     }
