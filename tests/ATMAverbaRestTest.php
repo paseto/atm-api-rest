@@ -146,6 +146,120 @@ class ATMAverbaRestTest extends TestCase
         unlink($xmlFile);
     }
 
+    public function testCancelaCTeUsesCteEndpoint(): void
+    {
+        $xmlFile = tempnam(sys_get_temp_dir(), 'cte');
+        file_put_contents($xmlFile, '<?xml version="1.0"?><cteCancelado/>');
+
+        $mock = new MockHandler([
+            new Response(200, [], '{"Bearer":"token-abc"}'),
+            new Response(200, [], json_encode([
+                'Averbado' => [
+                    'Protocolo' => '99999',
+                    'dhAverbacao' => '2024-02-01T08:30:00',
+                ],
+            ])),
+        ]);
+
+        $averba = $this->createClient($mock);
+        $averba
+            ->setUser('user')
+            ->setPassword('pass')
+            ->setCodigoATM('123')
+            ->setXml($xmlFile);
+
+        $this->assertTrue($averba->cancelaCTe());
+        $this->assertSame('99999', $averba->getResultProtocol());
+
+        $request = $mock->getLastRequest();
+        $this->assertNotNull($request);
+        $this->assertStringEndsWith('/rest/Cte', (string) $request->getUri());
+
+        unlink($xmlFile);
+    }
+
+    public function testEncerraMDFeHandlesDeclaradoAsArray(): void
+    {
+        $xmlFile = tempnam(sys_get_temp_dir(), 'mdfe');
+        file_put_contents($xmlFile, '<?xml version="1.0"?><mdfeEncerrado/>');
+
+        $mock = new MockHandler([
+            new Response(200, [], '{"Bearer":"token-abc"}'),
+            new Response(200, [], json_encode([
+                'Declarado' => [[
+                    'Protocolo' => 'MDFE-001',
+                    'dhChancela' => '2024-03-10T14:00:00',
+                ]],
+            ])),
+        ]);
+
+        $averba = $this->createClient($mock);
+        $averba
+            ->setUser('user')
+            ->setPassword('pass')
+            ->setCodigoATM('123')
+            ->setXml($xmlFile);
+
+        $this->assertTrue($averba->encerraMDFe());
+        $this->assertSame('MDFE-001', $averba->getResultProtocol());
+        $this->assertSame('2024-03-10T14:00:00', $averba->getResultProtocolDate());
+        $this->assertSame('MDF-e encerrado', $averba->getResultStatusMessage());
+
+        unlink($xmlFile);
+    }
+
+    public function testAverbaOutroDocumentoBuildsAndSendsXml(): void
+    {
+        $mock = new MockHandler([
+            new Response(200, [], '{"Bearer":"token-abc"}'),
+            new Response(200, [], json_encode([
+                'Averbado' => [
+                    'Protocolo' => 'OUT-001',
+                    'dhAverbacao' => '2024-06-15T11:00:00',
+                ],
+            ])),
+        ]);
+
+        $averba = $this->createClient($mock);
+        $averba
+            ->setUser('user')
+            ->setPassword('pass')
+            ->setCodigoATM('123');
+
+        $documento = (new \Paseto\OutroDocumento())
+            ->setMod(\Paseto\OutroDocumento::MOD_CTRC)
+            ->setSerie('1')
+            ->setNCT('999')
+            ->setDhEmi('2024-06-15T10:30:00')
+            ->setCMunIni('3550308')
+            ->setUFIni('SP')
+            ->setCMunFim('3304557')
+            ->setUFFim('RJ')
+            ->setEmit(new \Paseto\OutroDocumentoParte('07715207000191', '3550308', 'SP'))
+            ->setRem(new \Paseto\OutroDocumentoParte('07715207000191', '3550308', 'SP', '1058'))
+            ->setDest(new \Paseto\OutroDocumentoParte('00000000000191', '3304557', 'RJ', '1058'))
+            ->setVCarga('100.00')
+            ->setVCargaSeguro('100.00');
+
+        $this->assertTrue($averba->averbaOutroDocumento($documento));
+        $this->assertSame('OUT-001', $averba->getResultProtocol());
+
+        $request = $mock->getLastRequest();
+        $this->assertNotNull($request);
+        $body = (string) $request->getBody();
+        $this->assertStringContainsString('<mod>99</mod>', $body);
+        $this->assertStringEndsWith('/rest/Cte', (string) $request->getUri());
+    }
+
+    public function testAverbaOutroDocumentoReturnsFalseOnValidationError(): void
+    {
+        $mock = new MockHandler([]);
+        $averba = $this->createClient($mock);
+
+        $this->assertFalse($averba->averbaOutroDocumento(new \Paseto\OutroDocumento()));
+        $this->assertIsString($averba->getErrors());
+    }
+
     public function testAuthUsesJsonEncodeForSpecialCharacters(): void
     {
         $mock = new MockHandler([

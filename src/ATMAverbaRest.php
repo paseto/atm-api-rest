@@ -10,8 +10,13 @@ use GuzzleHttp\Exception\GuzzleException;
 
 class ATMAverbaRest extends BaseATMRest implements ATMAverbaRestInterface
 {
-    public const DEFAULT_BASE_URI = 'http://webserver.averba.com.br/rest/';
-    public const HOMOLOG_BASE_URI = 'http://homologaws.averba.com.br/rest/';
+    public const DEFAULT_BASE_URI = 'https://webserver.averba.com.br/rest/';
+    /**
+     * Homologação usa o mesmo host de produção; o ambiente é definido pelas
+     * credenciais/código ATM fornecidos pelo suporte AT&M (manual §27.9 cita
+     * homologaws, porém atualmente indisponível).
+     */
+    public const HOMOLOG_BASE_URI = 'https://webserver.averba.com.br/rest/';
 
     private ?string $user = null;
     private ?string $password = null;
@@ -109,15 +114,71 @@ class ATMAverbaRest extends BaseATMRest implements ATMAverbaRestInterface
 
     public function averbaCTe(): bool
     {
-        return $this->send('Cte');
+        return $this->send('Cte', 'Documento Averbado');
+    }
+
+    public function cancelaCTe(): bool
+    {
+        return $this->send('Cte', 'CT-e cancelado');
     }
 
     public function averbaMDFe(): bool
     {
-        return $this->send('MDFe');
+        return $this->send('MDFe', 'Documento declarado');
     }
 
-    private function send(string $service): bool
+    public function encerraMDFe(): bool
+    {
+        return $this->send('MDFe', 'MDF-e encerrado');
+    }
+
+    public function cancelaMDFe(): bool
+    {
+        return $this->send('MDFe', 'MDF-e cancelado');
+    }
+
+    public function incluiCondutorMDFe(): bool
+    {
+        return $this->send('MDFe', 'Condutor incluído no MDF-e');
+    }
+
+    /**
+     * Averba outros documentos (layout AT&M) montando o XML conforme seção 14 do manual.
+     */
+    public function averbaOutroDocumento(OutroDocumento $documento): bool
+    {
+        $this->setResultStatus(false);
+
+        try {
+            $xml = OutroDocumentoXmlBuilder::build($documento);
+        } catch (\InvalidArgumentException $exception) {
+            $this->setErrors($exception->getMessage());
+            return false;
+        }
+
+        return $this->sendDocument('Cte', 'Documento averbado', $xml);
+    }
+
+    private function send(string $service, string $defaultMessage): bool
+    {
+        $this->setResultStatus(false);
+
+        $xmlPath = $this->getXml();
+        if ($xmlPath === null || !is_file($xmlPath)) {
+            $this->setErrors('Um arquivo deve ser informado.');
+            return false;
+        }
+
+        $xml = file_get_contents($xmlPath);
+        if ($xml === false || !$this->isValidXml($xml)) {
+            $this->setErrors('Arquivo XML inválido.');
+            return false;
+        }
+
+        return $this->sendDocument($service, $defaultMessage, $xml);
+    }
+
+    private function sendDocument(string $service, string $defaultMessage, string $xml): bool
     {
         $this->setResultStatus(false);
 
@@ -126,14 +187,7 @@ class ATMAverbaRest extends BaseATMRest implements ATMAverbaRestInterface
                 return false;
             }
 
-            $xmlPath = $this->getXml();
-            if ($xmlPath === null || !is_file($xmlPath)) {
-                $this->setErrors('Um arquivo deve ser informado.');
-                return false;
-            }
-
-            $xml = file_get_contents($xmlPath);
-            if ($xml === false || !$this->isValidXml($xml)) {
+            if (!$this->isValidXml($xml)) {
                 $this->setErrors('Arquivo XML inválido.');
                 return false;
             }
@@ -154,7 +208,7 @@ class ATMAverbaRest extends BaseATMRest implements ATMAverbaRestInterface
             }
 
             $this->setResponse($response);
-            $this->applySuccessResponse($response, $service);
+            $this->applySuccessResponse($response, $service, $defaultMessage);
 
             return $this->getResultStatus();
         } catch (ClientException $e) {
@@ -170,7 +224,7 @@ class ATMAverbaRest extends BaseATMRest implements ATMAverbaRestInterface
         }
     }
 
-    private function applySuccessResponse(object $response, string $service): void
+    private function applySuccessResponse(object $response, string $service, string $defaultMessage): void
     {
         if (isset($response->Erros->Erro)) {
             $this->setResultStatus(false);
@@ -188,15 +242,21 @@ class ATMAverbaRest extends BaseATMRest implements ATMAverbaRestInterface
             $this->setResultStatusMessage($info->Descricao);
         } else {
             $this->setResultStatusCode(100);
-            $this->setResultStatusMessage('Documento Averbado');
+            $this->setResultStatusMessage($defaultMessage);
         }
 
         if ($service === 'MDFe') {
-            $this->setResultProtocol($response->Declarado->Protocolo ?? null);
-            $this->setResultProtocolDate($response->Declarado->dhChancela ?? null);
+            $declarado = isset($response->Declarado) ? $this->firstItem($response->Declarado) : null;
+            if (is_object($declarado)) {
+                $this->setResultProtocol($declarado->Protocolo ?? null);
+                $this->setResultProtocolDate($declarado->dhChancela ?? null);
+            }
         } else {
-            $this->setResultProtocol($response->Averbado->Protocolo ?? null);
-            $this->setResultProtocolDate($response->Averbado->dhAverbacao ?? null);
+            $averbado = isset($response->Averbado) ? $this->firstItem($response->Averbado) : null;
+            if (is_object($averbado)) {
+                $this->setResultProtocol($averbado->Protocolo ?? null);
+                $this->setResultProtocolDate($averbado->dhAverbacao ?? null);
+            }
         }
     }
 
