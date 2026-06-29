@@ -3,167 +3,108 @@ declare(strict_types=1);
 
 namespace Paseto;
 
-//const URI = 'http://homologaws.averba.com.br/rest/';
-const URI = 'http://webserver.averba.com.br/rest/';
-
 abstract class BaseATMRest
 {
+    private mixed $errors = null;
+    private mixed $response = null;
+    private bool $resultStatus = false;
+    private mixed $resultStatusCode = null;
+    private mixed $resultStatusMessage = null;
+    private mixed $resultProtocol = null;
+    private ?string $resultProtocolDate = null;
+    private ?string $method = null;
 
-    private $errors;
-    private $response;
-    private $resultStatus;
-    private $resultStatusCode;
-    private $resultStatusMessage;
-    private $resultProtocol;
-    private $resultProtocolDate;
-    private $method;
-
-    /**
-     * @return mixed
-     */
-    public function getErrors()
+    public function getErrors(): mixed
     {
         return $this->errors;
     }
 
-    /**
-     * @param mixed $errors
-     */
-    public function setErrors($errors): void
+    public function setErrors(mixed $errors): void
     {
         $this->errors = $errors;
     }
 
-    /**
-     * @return mixed
-     */
-    public function getResponse()
+    public function getResponse(): mixed
     {
         return $this->response;
     }
 
-    /**
-     * @param mixed $response
-     * @return BaseATMRest
-     */
-    public function setResponse($response)
+    public function setResponse(mixed $response): static
     {
         $this->response = $response;
         return $this;
     }
 
-    /**
-     * @return bool
-     */
     public function getResultStatus(): bool
     {
         return $this->resultStatus;
     }
 
-    /**
-     * @param bool $resultStatus
-     * @return BaseATMRest
-     */
-    public function setResultStatus(bool $resultStatus)
+    public function setResultStatus(bool $resultStatus): static
     {
         $this->resultStatus = $resultStatus;
         return $this;
     }
 
-    /**
-     * @return mixed
-     */
-    public function getResultStatusCode()
+    public function getResultStatusCode(): mixed
     {
         return $this->resultStatusCode;
     }
 
-    /**
-     * @param mixed $resultStatusCode
-     * @return BaseATMRest
-     */
-    public function setResultStatusCode($resultStatusCode)
+    public function setResultStatusCode(mixed $resultStatusCode): static
     {
         $this->resultStatusCode = $resultStatusCode;
         return $this;
     }
 
-    /**
-     * @return mixed
-     */
-    public function getResultStatusMessage()
+    public function getResultStatusMessage(): mixed
     {
         return $this->resultStatusMessage;
     }
 
-    /**
-     * @param mixed $resultStatusMessage
-     * @return BaseATMRest
-     */
-    public function setResultStatusMessage($resultStatusMessage)
+    public function setResultStatusMessage(mixed $resultStatusMessage): static
     {
         $this->resultStatusMessage = $resultStatusMessage;
         return $this;
     }
 
-    /**
-     * @return mixed
-     */
-    public function getResultProtocol()
+    public function getResultProtocol(): mixed
     {
         return $this->resultProtocol;
     }
 
-    /**
-     * @param mixed $resultProtocol
-     * @return BaseATMRest
-     */
-    public function setResultProtocol($resultProtocol)
+    public function setResultProtocol(mixed $resultProtocol): static
     {
         $this->resultProtocol = $resultProtocol;
         return $this;
     }
 
-    /**
-     * @return \DateTime
-     */
-    public function getResultProtocolDate()
+    public function getResultProtocolDate(): ?string
     {
         return $this->resultProtocolDate;
     }
 
-    /**
-     * @param \DateTime $resultProtocolDate
-     * @return BaseATMRest
-     */
-    public function setResultProtocolDate($resultProtocolDate)
+    public function setResultProtocolDate(?string $resultProtocolDate): static
     {
         $this->resultProtocolDate = $resultProtocolDate;
         return $this;
     }
 
-    /**
-     * @return string
-     */
-    public function getMethod():string
+    public function getMethod(): ?string
     {
         return $this->method;
     }
 
-    /**
-     * @param string $method
-     * @return BaseATMRest
-     */
-    public function setMethod(string $method)
+    public function setMethod(string $method): static
     {
         $this->method = $method;
         return $this;
     }
 
-    protected function isValidXml($xml)
+    protected function isValidXml(string $xml): bool
     {
         $content = trim($xml);
-        if (empty($content)) {
+        if ($content === '') {
             return false;
         }
 
@@ -177,5 +118,26 @@ abstract class BaseATMRest
         libxml_clear_errors();
 
         return empty($errors);
+    }
+
+    protected function firstItem(mixed $value): mixed
+    {
+        return is_array($value) ? $value[0] : $value;
+    }
+
+    protected function applyErrorFromBody(string $body): void
+    {
+        $error = json_decode($body);
+        if (!is_object($error)) {
+            $this->setErrors('Resposta inválida da API.');
+            return;
+        }
+
+        $this->setErrors($error);
+        if (isset($error->Erros->Erro)) {
+            $erro = $this->firstItem($error->Erros->Erro);
+            $this->setResultStatusCode($erro->Codigo);
+            $this->setResultStatusMessage($erro->Descricao);
+        }
     }
 }

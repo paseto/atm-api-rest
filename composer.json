@@ -27,7 +27,13 @@
             "Paseto\\": "src/"
         }
     },
+    "autoload-dev": {
+        "psr-4": {
+            "Paseto\\Tests\\": "tests/"
+        }
+    },
     "scripts": {
+        "test": "vendor/bin/phpunit",
         "phpcbf": "vendor/bin/phpcbf --standard=psr2 src; vendor/bin/phpcbf --standard=psr2 tests",
         "phpcs": "vendor/bin/phpcs --standard=psr2 src; vendor/bin/phpcs --standard=psr2 tests",
         "phpstan": "vendor/bin/phpstan analyse --level 1 src/"

@@ -1,10 +1,13 @@
 <?php
+declare(strict_types=1);
 
 namespace Paseto;
 
 interface ATMAverbaRestInterface
 {
-    public function averbaCTe();
+    public function validateCredentials(): bool;
 
-    public function averbaMDFe();
+    public function averbaCTe(): bool;
+
+    public function averbaMDFe(): bool;
 }

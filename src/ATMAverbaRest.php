@@ -4,235 +4,243 @@ declare(strict_types=1);
 namespace Paseto;
 
 use GuzzleHttp\Client;
+use GuzzleHttp\ClientInterface;
 use GuzzleHttp\Exception\ClientException;
 use GuzzleHttp\Exception\GuzzleException;
 
 class ATMAverbaRest extends BaseATMRest implements ATMAverbaRestInterface
 {
-    private $user;
-    private $password;
-    private $codigoATM;
-    private $token;
-    private $xml;
+    public const DEFAULT_BASE_URI = 'http://webserver.averba.com.br/rest/';
+    public const HOMOLOG_BASE_URI = 'http://homologaws.averba.com.br/rest/';
 
-    /**
-     * @return mixed
-     */
-    public function getUser()
+    private ?string $user = null;
+    private ?string $password = null;
+    private ?string $codigoATM = null;
+    private ?string $token = null;
+    private ?string $xml = null;
+    private ClientInterface $client;
+    private string $baseUri;
+
+    public function __construct(
+        ?ClientInterface $client = null,
+        string $baseUri = self::DEFAULT_BASE_URI
+    ) {
+        $this->baseUri = rtrim($baseUri, '/') . '/';
+        $this->client = $client ?? new Client(['base_uri' => $this->baseUri]);
+    }
+
+    public function getUser(): ?string
     {
         return $this->user;
     }
 
-    /**
-     * @param mixed $user
-     * @return ATMAverbaRest
-     */
-    public function setUser($user)
+    public function setUser(string $user): static
     {
         $this->user = $user;
         return $this;
     }
 
-    /**
-     * @return mixed
-     */
-    public function getPassword()
+    public function getPassword(): ?string
     {
         return $this->password;
     }
 
-    /**
-     * @param mixed $password
-     * @return ATMAverbaRest
-     */
-    public function setPassword($password)
+    public function setPassword(string $password): static
     {
         $this->password = $password;
         return $this;
     }
 
-    /**
-     * @return mixed
-     */
-    public function getCodigoATM()
+    public function getCodigoATM(): ?string
     {
         return $this->codigoATM;
     }
 
-    /**
-     * @param mixed $codigoATM
-     * @return ATMAverbaRest
-     */
-    public function setCodigoATM($codigoATM)
+    public function setCodigoATM(string $codigoATM): static
     {
         $this->codigoATM = $codigoATM;
         return $this;
     }
 
-    /**
-     * @return mixed
-     */
-    public function getToken()
+    public function getToken(): ?string
     {
         return $this->token;
     }
 
-    /**
-     * @param mixed $token
-     * @return ATMAverbaRest
-     */
-    public function setToken($token)
+    public function setToken(?string $token): static
     {
         $this->token = $token;
         return $this;
     }
 
-
-    /**
-     * @return mixed
-     */
-    public function getXml()
+    public function getXml(): ?string
     {
         return $this->xml;
     }
 
-    /**
-     * @param string $xml File path
-     * @return ATMAverbaRest
-     */
-    public function setXml(string $xml)
+    public function setXml(string $xml): static
     {
         $this->xml = $xml;
         return $this;
     }
 
+    public function getBaseUri(): string
+    {
+        return $this->baseUri;
+    }
+
     /**
-     * Averba CT-e
-     *
-     * @return bool
+     * Valida se usuário, senha e código ATM são aceitos pela API.
      */
-    public function averbaCTe()
+    public function validateCredentials(): bool
+    {
+        $this->setResultStatus(false);
+
+        if (!$this->auth()) {
+            return false;
+        }
+
+        $this->setResultStatus(true);
+        $this->setResultStatusCode(100);
+        $this->setResultStatusMessage('Credenciais válidas.');
+
+        return true;
+    }
+
+    public function averbaCTe(): bool
     {
         return $this->send('Cte');
     }
 
-    /**
-     * @return bool
-     */
-    public function averbaMDFe()
+    public function averbaMDFe(): bool
     {
         return $this->send('MDFe');
     }
 
-    /**
-     * Consume service
-     * @param string $service
-     * @return bool
-     */
-    private function send(string $service)
+    private function send(string $service): bool
     {
         $this->setResultStatus(false);
-        $client = new Client();
+
         try {
-            $this->auth();
-            if (!$this->getXml() || !is_file($this->getXml())) {
+            if (!$this->auth()) {
+                return false;
+            }
+
+            $xmlPath = $this->getXml();
+            if ($xmlPath === null || !is_file($xmlPath)) {
                 $this->setErrors('Um arquivo deve ser informado.');
                 return false;
             }
-            $xml = file_get_contents($this->getXml());
-            if ($this->isValidXml($xml) === false) {
+
+            $xml = file_get_contents($xmlPath);
+            if ($xml === false || !$this->isValidXml($xml)) {
                 $this->setErrors('Arquivo XML inválido.');
                 return false;
             }
 
-            $result = $client->request('POST', URI . $service, [
+            $result = $this->client->request('POST', $this->baseUri . $service, [
                 'body' => $xml,
                 'headers' => [
                     'Accept' => 'application/json',
                     'Content-type' => 'application/xml',
                     'Authorization' => 'Bearer ' . $this->getToken(),
-                ]
+                ],
             ]);
 
-            if (!is_file($this->getXml())) {
-                $this->setErrors('Arquivo não encontrado.');
-                return false;
-            }
-            $xml = file_get_contents($this->getXml());
-            if ($this->isValidXml($xml) === false) {
-                $this->setErrors('Arquivo XML inválido.');
-                return false;
-            }
-
             $response = json_decode($result->getBody()->getContents());
+            if (!is_object($response)) {
+                $this->setErrors('Resposta inválida da API.');
+                return false;
+            }
 
-            //All details
             $this->setResponse($response);
+            $this->applySuccessResponse($response, $service);
 
-            //Build standard response
-            if (isset($response->Erros)) {
-                $this->setResultStatus(false);
-                $this->setResultStatusCode($response->Erros->Erro->Codigo);
-                $this->setResultStatusMessage($response->Erros->Erro->Descricao);
-            } else {
-                $this->setResultStatus(true);
-                if (isset($response->Infos->Info)) {
-                    $this->setResultStatusCode($response->Infos->Info[0]->Codigo);
-                    $this->setResultStatusMessage($response->Infos->Info[0]->Descricao);
-                } else {
-                    $this->setResultStatusCode(100);
-                    $this->setResultStatusMessage('Documento Averbado');
-                }
-                if ($service == 'MDFe') {
-                    $this->setResultProtocol($response->Declarado->Protocolo);
-                    $this->setResultProtocolDate($response->Declarado->dhChancela);
-                } else {
-                    $this->setResultProtocol($response->Averbado->Protocolo);
-                    $this->setResultProtocolDate($response->Averbado->dhAverbacao);
-                }
-            }
-            return true;
+            return $this->getResultStatus();
         } catch (ClientException $e) {
-            $error = json_decode($e->getResponse()->getBody()->getContents());
-            $this->setErrors($error);
-            $this->setResultStatus(false);
-            if (is_array($error->Erros->Erro)) {
-                $this->setResultStatusCode($error->Erros->Erro[0]->Codigo);
-                $this->setResultStatusMessage($error->Erros->Erro[0]->Descricao);
+            $response = $e->getResponse();
+            if ($response !== null) {
+                $this->applyErrorFromBody($response->getBody()->getContents());
             }
+            $this->setResultStatus(false);
             return false;
         } catch (GuzzleException $guzzleException) {
-            $this->setErrors('Erro ao executar aplicação. '.$guzzleException->getMessage());
+            $this->setErrors('Erro ao executar aplicação. ' . $guzzleException->getMessage());
             return false;
         }
     }
 
-    private function auth()
+    private function applySuccessResponse(object $response, string $service): void
     {
-        $client = new Client();
-        if (empty($this->getUser()) || empty($this->getPassword()) || empty($this->getCodigoATM())) {
+        if (isset($response->Erros->Erro)) {
+            $this->setResultStatus(false);
+            $erro = $this->firstItem($response->Erros->Erro);
+            $this->setResultStatusCode($erro->Codigo);
+            $this->setResultStatusMessage($erro->Descricao);
+            return;
+        }
+
+        $this->setResultStatus(true);
+
+        if (isset($response->Infos->Info)) {
+            $info = $this->firstItem($response->Infos->Info);
+            $this->setResultStatusCode($info->Codigo);
+            $this->setResultStatusMessage($info->Descricao);
+        } else {
+            $this->setResultStatusCode(100);
+            $this->setResultStatusMessage('Documento Averbado');
+        }
+
+        if ($service === 'MDFe') {
+            $this->setResultProtocol($response->Declarado->Protocolo ?? null);
+            $this->setResultProtocolDate($response->Declarado->dhChancela ?? null);
+        } else {
+            $this->setResultProtocol($response->Averbado->Protocolo ?? null);
+            $this->setResultProtocolDate($response->Averbado->dhAverbacao ?? null);
+        }
+    }
+
+    private function auth(): bool
+    {
+        if ($this->getUser() === null || $this->getUser() === ''
+            || $this->getPassword() === null || $this->getPassword() === ''
+            || $this->getCodigoATM() === null || $this->getCodigoATM() === '') {
             $this->setErrors('Todos os parâmetros são obrigatórios.');
             return false;
         }
+
         try {
-            $res = $client->request('POST', URI . 'Auth', [
+            $res = $this->client->request('POST', $this->baseUri . 'Auth', [
                 'headers' => [
                     'Accept' => 'application/json',
                     'Content-type' => 'application/json',
                 ],
-                'body' => '{
-                   "usuario":"' . $this->getUser() . '",
-                   "senha":"' . $this->getPassword() . '",
-                   "codigoatm":"' . $this->getCodigoATM() . '"
-                }'
+                'body' => json_encode([
+                    'usuario' => $this->getUser(),
+                    'senha' => $this->getPassword(),
+                    'codigoatm' => $this->getCodigoATM(),
+                ], JSON_THROW_ON_ERROR),
             ]);
-            $content = $res->getBody()->getContents();
-            $token = json_decode($content);
-            $this->setToken($token->Bearer);
+
+            $token = json_decode($res->getBody()->getContents());
+            if (!is_object($token) || !isset($token->Bearer)) {
+                $this->setErrors('Resposta de autenticação inválida.');
+                return false;
+            }
+
+            $this->setToken((string) $token->Bearer);
             return true;
         } catch (ClientException $exception) {
-            $error = $exception->getResponse()->getBody()->getContents();
-            $this->setErrors(json_decode($error));
+            $response = $exception->getResponse();
+            if ($response !== null) {
+                $this->applyErrorFromBody($response->getBody()->getContents());
+            }
+            return false;
+        } catch (GuzzleException $guzzleException) {
+            $this->setErrors('Erro ao executar aplicação. ' . $guzzleException->getMessage());
+            return false;
+        } catch (\JsonException) {
+            $this->setErrors('Erro ao montar requisição de autenticação.');
             return false;
         }
     }
